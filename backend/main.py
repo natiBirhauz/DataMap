@@ -80,7 +80,7 @@ app.add_middleware(
 def read_root():
     return {"status": "ok"}
 
-@app.post("/api/query", response_model=List[CountryData])
+@app.post("/api/query/", response_model=List[CountryData]) 
 async def handle_query(req: QueryRequest):
     prompt = f"""
 You are a world-class data scientist AI building a dataset for a global choropleth map. Your PRIMARY GOAL is to generate a comprehensive global dataset. The user's query is: "{req.query}". You must provide a response ONLY in a valid JSON object format with two keys: "label" and "data". "label" should be a short descriptive title. "data" should be a JSON list of objects, one for each country. For each country object, include "country_code" (the EXACT 3-letter ISO code) and "value" (your numeric estimate). Your response MUST include a large number of countries (at least 150 for broad topics) to cover the world map. Here are the valid country codes: {json.dumps(list(COUNTRY_CODES.values()))}
