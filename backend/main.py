@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from openai import OpenAI
 from dotenv import load_dotenv # Import the library
-
+import os
 # --- THE DEFINITIVE LOCAL DEVELOPMENT API KEY LOADING LOGIC ---
 
 # --- Setup and Initialization ---
