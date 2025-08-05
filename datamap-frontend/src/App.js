@@ -10,7 +10,7 @@ import './App.css';
 import worldGeoJSON from './world.geo.json';
 
 const GOOGLE_CLIENT_ID = "569893946999-hlv7lda6iquvtn13b3icnf9ldu5o3ici.apps.googleusercontent.com";
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "datamap-production.up.railway.app";
 
 const DataLayer = ({ mapData }) => {
     const map = useMap();
