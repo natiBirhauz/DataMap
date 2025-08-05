@@ -14,6 +14,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
     print("🚨 FATAL: OPENAI_API_KEY environment variable is not set.")
+    # This will cause the app to crash on startup if the key is missing.
     raise SystemExit("FATAL ERROR: OPENAI_API_KEY environment variable not found.")
 else:
     print("✅ OpenAI API key loaded successfully.")
@@ -24,6 +25,8 @@ client = OpenAI(api_key=api_key)
 # --- Pydantic Models ---
 class QueryRequest(BaseModel):
     query: str
+    # Removed user_id as per your App.js, assuming it's not being sent.
+    # If you add it back to App.js, add it here too: user_id: Optional[str] = None
 
 class CountryData(BaseModel):
     country_code: str
@@ -31,26 +34,51 @@ class CountryData(BaseModel):
     label: str
 
 
-# --- Country Codes ---
-# This list is fine, no changes needed here.
-COUNTRY_CODES = { 'Afghanistan': 'AFG', 'Angola': 'AGO', 'Albania': 'ALB', 'United Arab Emirates': 'ARE', 'Argentina': 'ARG', 'Armenia': 'ARM', 'Australia': 'AUS', 'Austria': 'AUT', 'Azerbaijan': 'AZE', 'Belgium': 'BEL', 'Burkina Faso': 'BFA', 'Bangladesh': 'BGD', 'Bulgaria': 'BGR', 'Bosnia and Herzegovina': 'BIH', 'Belarus': 'BLR', 'Bolivia': 'BOL', 'Brazil': 'BRA', 'Canada': 'CAN', 'Switzerland': 'CHE', 'Chile': 'CHL', 'China': 'CHN', 'Cameroon': 'CMR', 'DR Congo': 'COD', 'Colombia': 'COL', 'Cuba': 'CUB', 'Germany': 'DEU', 'Denmark': 'DNK', 'Algeria': 'DZA', 'Ecuador': 'ECU', 'Egypt': 'EGY', 'Spain': 'ESP', 'Ethiopia': 'ETH', 'Finland': 'FIN', 'France': 'FRA', 'United Kingdom': 'GBR', 'Greece': 'GRC', 'Guatemala': 'GTM', 'Hungary': 'HUN', 'Indonesia': 'IDN', 'India': 'IND', 'Ireland': 'IRL', 'Iran': 'IRN', 'Iraq': 'IRQ', 'Iceland': 'ISL', 'Israel': 'ISR', 'Italy': 'ITA', 'Japan': 'JPN', 'Kenya': 'KEN', 'South Korea': 'KOR', 'Lebanon': 'LBN', 'Libya': 'LBY', 'Morocco': 'MAR', 'Mexico': 'MEX', 'Mali': 'MLI', 'Mongolia': 'MNG', 'Malaysia': 'MYS', 'Nigeria': 'NGA', 'Netherlands': 'NLD', 'Norway': 'NOR', 'New Zealand': 'NZL', 'Peru': 'PER', 'Philippines': 'PHL', 'Pakistan': 'PAK', 'Poland': 'POL', 'Portugal': 'PRT', 'Qatar': 'QAT', 'Romania': 'ROU', 'Russia': 'RUS', 'Saudi Arabia': 'SAU', 'Sudan': 'SDN', 'Sweden': 'SWE', 'Syria': 'SYR', 'Thailand': 'THA', 'Turkey': 'TUR', 'Ukraine': 'UKR', 'United States': 'USA', 'Venezuela': 'VEN', 'Vietnam': 'VNM', 'South Africa': 'ZAF', 'Zambia': 'ZMB', 'Zimbabwe': 'ZWE' }
+# --- Country Codes (for AI context) ---
+COUNTRY_CODES = {
+    'Afghanistan': 'AFG', 'Angola': 'AGO', 'Albania': 'ALB', 'United Arab Emirates': 'ARE', 'Argentina': 'ARG', 'Armenia': 'ARM', 'Australia': 'AUS', 'Austria': 'AUT', 'Azerbaijan': 'AZE',
+    'Burundi': 'BDI', 'Belgium': 'BEL', 'Benin': 'BEN', 'Burkina Faso': 'BFA', 'Bangladesh': 'BGD', 'Bulgaria': 'BGR', 'Bahamas': 'BHS', 'Bosnia and Herzegovina': 'BIH', 'Belarus': 'BLR', 'Belize': 'BLZ',
+    'Bolivia': 'BOL', 'Brazil': 'BRA', 'Brunei': 'BRN', 'Bhutan': 'BTN', 'Botswana': 'BWA', 'Central African Republic': 'CAF', 'Canada': 'CAN', 'Switzerland': 'CHE', 'Chile': 'CHL', 'China': 'CHN',
+    'Ivory Coast': 'CIV', 'Cameroon': 'CMR', 'DR Congo': 'COD', 'Republic of the Congo': 'COG', 'Colombia': 'COL', 'Costa Rica': 'CRI', 'Cuba': 'CUB', 'Northern Cyprus': 'CYN', 'Cyprus': 'CYP', 'Czech Republic': 'CZE',
+    'Germany': 'DEU', 'Djibouti': 'DJI', 'Denmark': 'DNK', 'Dominican Republic': 'DOM', 'Algeria': 'DZA', 'Ecuador': 'ECU', 'Egypt': 'EGY', 'Eritrea': 'ERI', 'Spain': 'ESP', 'Estonia': 'EST',
+    'Ethiopia': 'ETH', 'Finland': 'FIN', 'Fiji': 'FJI', 'France': 'FRA', 'Gabon': 'GAB', 'United Kingdom': 'GBR', 'Georgia': 'GEO', 'Ghana': 'GHA', 'Guinea': 'GIN',
+    'Gambia': 'GMB', 'Guinea-Bissau': 'GNB', 'Equatorial Guinea': 'GNQ', 'Greece': 'GRC', 'Greenland': 'GRL', 'Guatemala': 'GTM', 'Guyana': 'GUY', 'Honduras': 'HND', 'Croatia': 'HRV', 'Haiti': 'HTI',
+    'Hungary': 'HUN', 'Indonesia': 'IDN', 'India': 'IND', 'Ireland': 'IRL', 'Iran': 'IRN', 'Iraq': 'IRQ', 'Iceland': 'ISL', 'Israel': 'ISR', 'Italy': 'ITA',
+    'Jamaica': 'JAM', 'Jordan': 'JOR', 'Japan': 'JPN', 'Kazakhstan': 'KAZ', 'Kenya': 'KEN', 'Kyrgyzstan': 'KGZ', 'Cambodia': 'KHM', 'South Korea': 'KOR', 'Kosovo': 'KOS', 'Kuwait': 'KWT',
+    'Laos': 'LAO', 'Lebanon': 'LBN', 'Liberia': 'LBR', 'Libya': 'LBY', 'Sri Lanka': 'LKA', 'Lesotho': 'LSO', 'Lithuania': 'LTU', 'Luxembourg': 'LUX', 'Latvia': 'LVA',
+    'Morocco': 'MAR', 'Moldova': 'MDA', 'Madagascar': 'MDG', 'Mexico': 'MEX', 'Macedonia': 'MKD', 'Mali': 'MLI', 'Myanmar': 'MMR', 'Montenegro': 'MNE', 'Mongolia': 'MNG',
+    'Mozambique': 'MOZ', 'Mauritania': 'MRT', 'Malawi': 'MWI', 'Malaysia': 'MYS', 'Namibia': 'NAM', 'New Caledonia': 'NCL', 'Niger': 'NER', 'Nigeria': 'NGA', 'Nicaragua': 'NIC',
+    'Netherlands': 'NLD', 'Norway': 'NOR', 'Nepal': 'NPL', 'New Zealand': 'NZL', 'Oman': 'OMN', 'Pakistan': 'PAK', 'Panama': 'PAN', 'Peru': 'PER', 'Philippines': 'PHL',
+    'Papua New Guinea': 'PNG', 'Poland': 'POL', 'Puerto Rico': 'PRI', 'North Korea': 'PRK', 'Portugal': 'PRT', 'Paraguay': 'PRY', 'Qatar': 'QAT', 'Romania': 'ROU', 'Russia': 'RUS',
+    'Rwanda': 'RWA', 'Western Sahara': 'ESH', 'Saudi Arabia': 'SAU', 'Sudan': 'SDN', 'South Sudan': 'SSD', 'Senegal': 'SEN', 'Solomon Islands': 'SLB', 'Sierra Leone': 'SLE', 'El Salvador': 'SLV', 'Somaliland': 'SOM', 'Somalia': 'SOM', 'Republic of Serbia': 'SRB',
+    'Suriname': 'SUR', 'Slovakia': 'SVK', 'Slovenia': 'SVN', 'Sweden': 'SWE', 'Swaziland': 'SWZ', 'Syria': 'SYR', 'Chad': 'TCD', 'Togo': 'TGO', 'Thailand': 'THA',
+    'Tajikistan': 'TJK', 'Turkmenistan': 'TKM', 'East Timor': 'TLS', 'Trinidad and Tobago': 'TTO', 'Tunisia': 'TUN', 'Turkey': 'TUR', 'Taiwan': 'TWN', 'Tanzania': 'TZA', 'Uganda': 'UGA',
+    'Ukraine': 'UKR', 'Uruguay': 'URY', 'United States': 'USA', 'Uzbekistan': 'UZB', 'Venezuela': 'VEN', 'Vietnam': 'VNM', 'Vanuatu': 'VUT', 'Yemen': 'YEM', 'South Africa': 'ZAF', 'Zambia': 'ZMB', 'Zimbabwe': 'ZWE'
+}
 
 
 # --- FastAPI Application Setup ---
-# Your new, improved setup is integrated here.
 app = FastAPI(
     title="DATAMAP",
     version="1.1",
     description="The best MAP DATA VISUALIZER"
 )
 
-# This wildcard CORS configuration is the key to fixing the error.
+# This CORS configuration explicitly lists allowed origins.
+# IMPORTANT: Replace 'https://your-vercel-app-domain.vercel.app' with your ACTUAL Vercel domain.
+# Also ensure your Railway backend is publicly accessible.
+origins = [
+    "http://localhost:3000", # For local development
+    "https://data-ttmkxhfym-natis-projects-58acbefe.vercel.app", # Your EXACT Vercel deployment domain
+    # Add any other Vercel preview/custom domains here if they will be used
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow any origin
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -61,13 +89,29 @@ def read_root():
 @app.post("/api/query/", response_model=List[CountryData])
 async def handle_query(req: QueryRequest):
     print(f"[INFO] Received query: '{req.query}'")
-    # The rest of your handle_query function remains the same...
-    prompt = f"""You are a world-class data scientist AI building a dataset for a global choropleth map. Your PRIMARY GOAL is to generate a comprehensive global dataset. The user's query is: "{req.query}". You must provide a response ONLY in a valid JSON object format with two keys: "label" and "data". "label" should be a short descriptive title. "data" should be a JSON list of objects, one for each country. For each country object, include "country_code" (the EXACT 3-letter ISO code) and "value" (your numeric estimate). Your response MUST include a large number of countries (at least 150 for broad topics) to cover the world map. Here are the valid country codes: {json.dumps(list(COUNTRY_CODES.values()))}"""
+    prompt = f"""
+You are a world-class data scientist AI building a dataset for a global choropleth map. Your PRIMARY GOAL is to generate a comprehensive global dataset. The user's query is: "{req.query}". You must provide a response ONLY in a valid JSON object format with two keys: "label" and "data". "label" should be a short descriptive title. "data" should be a JSON list of objects, one for each country. For each country object, include "country_code" (the EXACT 3-letter ISO code) and "value" (your numeric estimate). Your response MUST include a large number of countries (at least 150 for broad topics) to cover the world map. Here are the valid country codes: {json.dumps(list(COUNTRY_CODES.values()))}
+"""
     try:
-        response = client.chat.completions.create(model="gpt-4o", response_format={"type": "json_object"}, messages=[{"role": "system", "content": "You are a helpful data analysis AI that only responds with JSON for a world map."}, {"role": "user", "content": prompt}], temperature=0.2)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a helpful data analysis AI that only responds with JSON for a world map."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+        )
         response_content = response.choices[0].message.content
         ai_data = json.loads(response_content)
-        final_response = [{"country_code": item.get("country_code"), "value": item.get("value"), "label": ai_data.get("label", "Estimated Value")} for item in ai_data.get("data", []) if item.get("country_code") in COUNTRY_CODES.values()]
+        final_response = [
+            {
+                "country_code": item.get("country_code"),
+                "value": item.get("value"),
+                "label": ai_data.get("label", "Estimated Value")
+            }
+            for item in ai_data.get("data", []) if item.get("country_code") in COUNTRY_CODES.values()
+        ]
         if not final_response: raise HTTPException(status_code=404, detail="The AI could not generate data for your query.")
         return final_response
     except Exception as e:
