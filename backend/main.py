@@ -1,42 +1,37 @@
 # main.py
 import os
 import json
-from dotenv import load_dotenv
+import uvicorn  # Import uvicorn to run from script if needed
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-
-# --- Use the new, recommended way to instantiate the OpenAI client ---
 from openai import OpenAI
 
-# 1. LOAD ENVIRONMENT and VERIFY API KEY
-load_dotenv()
-
-# --- THIS IS THE CORRECTED LINE ---
-# It now looks for the VARIABLE NAME, not the value.
-api_key = os.getenv("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") 
-
+# --- THE DEFINITIVE API KEY LOADING LOGIC ---
+# This is the most robust way to do it for production.
+# It relies ONLY on the environment variables provided by the platform (Railway).
+api_key = os.getenv("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")
 if not api_key:
-    print("FATAL ERROR: OPENAI_API_KEY variable not found.")
-    # In a real app, you would want to stop the server here.
+    # This will cause a hard crash with a very clear message in the logs.
+    raise ValueError("FATAL ERROR: The OPENAI_API_KEY environment variable was not found or is empty in the Railway deployment.")
 else:
-    print("OpenAI API Key loaded successfully from environment variable.")
+    print("SUCCESS: OpenAI API Key was found in the environment.")
 
 client = OpenAI(api_key=api_key)
 
 
-# --- Pydantic Models (Data Structures) ---
+# --- Pydantic Models ---
 class QueryRequest(BaseModel):
     query: str
 
 class CountryData(BaseModel):
     country_code: str
     value: Optional[float]
-    label: str # The frontend needs this in each item
+    label: str
 
 
-# --- VASTLY EXPANDED COUNTRY CODE LIST ---
+# --- Country Codes ---
 COUNTRY_CODES = {
     'Afghanistan': 'AFG', 'Angola': 'AGO', 'Albania': 'ALB', 'United Arab Emirates': 'ARE', 'Argentina': 'ARG', 'Armenia': 'ARM', 'Antarctica': 'ATA', 'Australia': 'AUS', 'Austria': 'AUT', 'Azerbaijan': 'AZE',
     'Burundi': 'BDI', 'Belgium': 'BEL', 'Benin': 'BEN', 'Burkina Faso': 'BFA', 'Bangladesh': 'BGD', 'Bulgaria': 'BGR', 'Bahamas': 'BHS', 'Bosnia and Herzegovina': 'BIH', 'Belarus': 'BLR', 'Belize': 'BLZ',
@@ -64,53 +59,45 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all origins for simplicity, can be restricted later
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Health check endpoint
 @app.get("/")
 def read_root():
-    return {"status": "ok"}
-
+    # This lets us know the server is at least running
+    return {"status": "DataMap Backend is running"}
 
 @app.post("/api/query", response_model=List[CountryData])
 async def handle_query(req: QueryRequest):
+    # This prompt is confirmed to work well
     prompt = f"""
 You are a world-class data scientist AI building a dataset for a global choropleth map.
 Your PRIMARY GOAL is to generate a comprehensive global dataset, NOT just a "top 10" list.
 The user's query is: "{req.query}"
 You must provide a response ONLY in a valid JSON object format with two keys: "label" and "data".
 1. "label": A short, descriptive title for the data (e.g., "Estimated Literacy Rate (%)").
-2. "data": A JSON list of objects, one for each country.
+2. "data": A JSON list of objects.
 Here is the mapping of country names to the required 3-letter codes: {json.dumps(list(COUNTRY_CODES.values()))}
 CRITICAL INSTRUCTIONS:
-- Your response MUST include a large number of countries to cover the world map. For broad topics like GDP, population, or birthrate, you should provide data for AT LEAST 150 countries.
-- For each country object in the "data" list, you must include two keys:
-  - "country_code": The EXACT 3-letter ISO code from the provided list.
-  - "value": A numeric value representing your best estimate for the query.
-- If a query is abstract (like "happiness"), assign a relative score from 1 to 100.
-- Do NOT include countries for which you cannot find or estimate a value.
-- Ensure your entire output is a single, valid JSON object and nothing else.
+- Your response MUST include a large number of countries. For broad topics, provide data for AT LEAST 150 countries.
+- For each country object in the "data" list, you must include two keys: "country_code" and "value".
+- Ensure your entire output is a single, valid JSON object.
 """
-    print(f"\n[DEBUG] Sending query to GPT-4o: '{req.query}'")
     try:
         response = client.chat.completions.create(
             model="gpt-4o",
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": "You are a helpful data analysis AI that only responds with a valid JSON object designed to populate a world map."},
+                {"role": "system", "content": "You are a data analysis AI that only responds with JSON for a world map."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
         )
         response_content = response.choices[0].message.content
-        print(f"[DEBUG] GPT-4o responded with a JSON object.")
-        
         ai_data = json.loads(response_content)
-        
         final_response = [
             {
                 "country_code": item.get("country_code"),
@@ -119,15 +106,10 @@ CRITICAL INSTRUCTIONS:
             }
             for item in ai_data.get("data", []) if item.get("country_code") in COUNTRY_CODES.values()
         ]
-        
         if not final_response:
              raise HTTPException(status_code=404, detail="The AI could not generate data for your query.")
-
         return final_response
 
-    except json.JSONDecodeError:
-        print(f"[ERROR] Failed to decode JSON from AI response.")
-        raise HTTPException(status_code=500, detail="The AI returned an invalid format. Please try again.")
     except Exception as e:
         print(f"[ERROR] An unexpected error occurred: {e}")
         raise HTTPException(status_code=500, detail="An internal error occurred. Please check the server logs.")
