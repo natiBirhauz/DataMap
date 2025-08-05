@@ -3,19 +3,19 @@ import os
 import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from typing import List, Optional
 from openai import OpenAI
 from dotenv import load_dotenv
 
+# --- Setup and Initialization ---
 load_dotenv()
-
 api_key = os.getenv("OPENAI_API_KEY")
 
+# Critical check on application startup
 if not api_key:
-    print("🚨 FATAL: OPENAI_API_KEY environment variable is not set.")
-    # This will cause the app to crash on startup if the key is missing.
-    raise SystemExit("FATAL ERROR: OPENAI_API_KEY environment variable not found.")
+    # This will crash the server on startup if the key is missing, which is what we want.
+    raise SystemExit("🚨 FATAL ERROR: OPENAI_API_KEY environment variable not found. The application cannot start.")
 else:
     print("✅ OpenAI API key loaded successfully.")
 
@@ -25,95 +25,117 @@ client = OpenAI(api_key=api_key)
 # --- Pydantic Models ---
 class QueryRequest(BaseModel):
     query: str
-    # Removed user_id as per your App.js, assuming it's not being sent.
-    # If you add it back to App.js, add it here too: user_id: Optional[str] = None
 
 class CountryData(BaseModel):
     country_code: str
     value: Optional[float]
+
+# This is the model that the AI is expected to return
+class AIResponse(BaseModel):
     label: str
+    data: List[CountryData]
 
 
-# --- Country Codes (for AI context) ---
-COUNTRY_CODES = {
-    'Afghanistan': 'AFG', 'Angola': 'AGO', 'Albania': 'ALB', 'United Arab Emirates': 'ARE', 'Argentina': 'ARG', 'Armenia': 'ARM', 'Australia': 'AUS', 'Austria': 'AUT', 'Azerbaijan': 'AZE',
-    'Burundi': 'BDI', 'Belgium': 'BEL', 'Benin': 'BEN', 'Burkina Faso': 'BFA', 'Bangladesh': 'BGD', 'Bulgaria': 'BGR', 'Bahamas': 'BHS', 'Bosnia and Herzegovina': 'BIH', 'Belarus': 'BLR', 'Belize': 'BLZ',
-    'Bolivia': 'BOL', 'Brazil': 'BRA', 'Brunei': 'BRN', 'Bhutan': 'BTN', 'Botswana': 'BWA', 'Central African Republic': 'CAF', 'Canada': 'CAN', 'Switzerland': 'CHE', 'Chile': 'CHL', 'China': 'CHN',
-    'Ivory Coast': 'CIV', 'Cameroon': 'CMR', 'DR Congo': 'COD', 'Republic of the Congo': 'COG', 'Colombia': 'COL', 'Costa Rica': 'CRI', 'Cuba': 'CUB', 'Northern Cyprus': 'CYN', 'Cyprus': 'CYP', 'Czech Republic': 'CZE',
-    'Germany': 'DEU', 'Djibouti': 'DJI', 'Denmark': 'DNK', 'Dominican Republic': 'DOM', 'Algeria': 'DZA', 'Ecuador': 'ECU', 'Egypt': 'EGY', 'Eritrea': 'ERI', 'Spain': 'ESP', 'Estonia': 'EST',
-    'Ethiopia': 'ETH', 'Finland': 'FIN', 'Fiji': 'FJI', 'France': 'FRA', 'Gabon': 'GAB', 'United Kingdom': 'GBR', 'Georgia': 'GEO', 'Ghana': 'GHA', 'Guinea': 'GIN',
-    'Gambia': 'GMB', 'Guinea-Bissau': 'GNB', 'Equatorial Guinea': 'GNQ', 'Greece': 'GRC', 'Greenland': 'GRL', 'Guatemala': 'GTM', 'Guyana': 'GUY', 'Honduras': 'HND', 'Croatia': 'HRV', 'Haiti': 'HTI',
-    'Hungary': 'HUN', 'Indonesia': 'IDN', 'India': 'IND', 'Ireland': 'IRL', 'Iran': 'IRN', 'Iraq': 'IRQ', 'Iceland': 'ISL', 'Israel': 'ISR', 'Italy': 'ITA',
-    'Jamaica': 'JAM', 'Jordan': 'JOR', 'Japan': 'JPN', 'Kazakhstan': 'KAZ', 'Kenya': 'KEN', 'Kyrgyzstan': 'KGZ', 'Cambodia': 'KHM', 'South Korea': 'KOR', 'Kosovo': 'KOS', 'Kuwait': 'KWT',
-    'Laos': 'LAO', 'Lebanon': 'LBN', 'Liberia': 'LBR', 'Libya': 'LBY', 'Sri Lanka': 'LKA', 'Lesotho': 'LSO', 'Lithuania': 'LTU', 'Luxembourg': 'LUX', 'Latvia': 'LVA',
-    'Morocco': 'MAR', 'Moldova': 'MDA', 'Madagascar': 'MDG', 'Mexico': 'MEX', 'Macedonia': 'MKD', 'Mali': 'MLI', 'Myanmar': 'MMR', 'Montenegro': 'MNE', 'Mongolia': 'MNG',
-    'Mozambique': 'MOZ', 'Mauritania': 'MRT', 'Malawi': 'MWI', 'Malaysia': 'MYS', 'Namibia': 'NAM', 'New Caledonia': 'NCL', 'Niger': 'NER', 'Nigeria': 'NGA', 'Nicaragua': 'NIC',
-    'Netherlands': 'NLD', 'Norway': 'NOR', 'Nepal': 'NPL', 'New Zealand': 'NZL', 'Oman': 'OMN', 'Pakistan': 'PAK', 'Panama': 'PAN', 'Peru': 'PER', 'Philippines': 'PHL',
-    'Papua New Guinea': 'PNG', 'Poland': 'POL', 'Puerto Rico': 'PRI', 'North Korea': 'PRK', 'Portugal': 'PRT', 'Paraguay': 'PRY', 'Qatar': 'QAT', 'Romania': 'ROU', 'Russia': 'RUS',
-    'Rwanda': 'RWA', 'Western Sahara': 'ESH', 'Saudi Arabia': 'SAU', 'Sudan': 'SDN', 'South Sudan': 'SSD', 'Senegal': 'SEN', 'Solomon Islands': 'SLB', 'Sierra Leone': 'SLE', 'El Salvador': 'SLV', 'Somaliland': 'SOM', 'Somalia': 'SOM', 'Republic of Serbia': 'SRB',
-    'Suriname': 'SUR', 'Slovakia': 'SVK', 'Slovenia': 'SVN', 'Sweden': 'SWE', 'Swaziland': 'SWZ', 'Syria': 'SYR', 'Chad': 'TCD', 'Togo': 'TGO', 'Thailand': 'THA',
-    'Tajikistan': 'TJK', 'Turkmenistan': 'TKM', 'East Timor': 'TLS', 'Trinidad and Tobago': 'TTO', 'Tunisia': 'TUN', 'Turkey': 'TUR', 'Taiwan': 'TWN', 'Tanzania': 'TZA', 'Uganda': 'UGA',
-    'Ukraine': 'UKR', 'Uruguay': 'URY', 'United States': 'USA', 'Uzbekistan': 'UZB', 'Venezuela': 'VEN', 'Vietnam': 'VNM', 'Vanuatu': 'VUT', 'Yemen': 'YEM', 'South Africa': 'ZAF', 'Zambia': 'ZMB', 'Zimbabwe': 'ZWE'
-}
+# --- Country Codes ---
+COUNTRY_CODES_SET = {'AFG', 'AGO', 'ALB', 'ARE', 'ARG', 'ARM', 'AUS', 'AUT', 'AZE', 'BEL', 'BFA', 'BGD', 'BGR', 'BIH', 'BLR', 'BOL', 'BRA', 'CAN', 'CHE', 'CHL', 'CHN', 'CMR', 'COD', 'COL', 'CUB', 'DEU', 'DNK', 'DZA', 'ECU', 'EGY', 'ESP', 'ETH', 'FIN', 'FRA', 'GBR', 'GRC', 'GTM', 'HUN', 'IDN', 'IND', 'IRL', 'IRN', 'IRQ', 'ISL', 'ISR', 'ITA', 'JPN', 'KEN', 'KOR', 'LBN', 'LBY', 'MAR', 'MEX', 'MLI', 'MNG', 'MYS', 'NGA', 'NLD', 'NOR', 'NZL', 'PER', 'PHL', 'PAK', 'POL', 'PRT', 'QAT', 'ROU', 'RUS', 'SAU', 'SDN', 'SWE', 'SYR', 'THA', 'TUR', 'UKR', 'USA', 'VEN', 'VNM', 'ZAF', 'ZMB', 'ZWE'}
 
 
-# --- FastAPI Application Setup ---
+# --- FastAPI Application ---
 app = FastAPI(
-    title="DATAMAP",
-    version="1.1",
-    description="The best MAP DATA VISUALIZER"
+    title="DataMap API",
+    version="1.2",
+    description="The best MAP DATA VISUALIZER - now with enhanced logging"
 )
-
-# This CORS configuration explicitly lists allowed origins.
-# IMPORTANT: Replace 'https://your-vercel-app-domain.vercel.app' with your ACTUAL Vercel domain.
-# Also ensure your Railway backend is publicly accessible.
-origins = [
-    "http://localhost:3000", # For local development
-    "https://data-ttmkxhfym-natis-projects-58acbefe.vercel.app", # Your EXACT Vercel deployment domain
-    # Add any other Vercel preview/custom domains here if they will be used
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 @app.get("/")
 def read_root():
-    return {"status": "ok"}
+    return {"status": "ok", "version": app.version}
 
-@app.post("/api/query/", response_model=List[CountryData])
+
+@app.post("/api/query/") # Note the trailing slash
 async def handle_query(req: QueryRequest):
-    print(f"[INFO] Received query: '{req.query}'")
-    prompt = f"""
-You are a world-class data scientist AI building a dataset for a global choropleth map. Your PRIMARY GOAL is to generate a comprehensive global dataset. The user's query is: "{req.query}". You must provide a response ONLY in a valid JSON object format with two keys: "label" and "data". "label" should be a short descriptive title. "data" should be a JSON list of objects, one for each country. For each country object, include "country_code" (the EXACT 3-letter ISO code) and "value" (your numeric estimate). Your response MUST include a large number of countries (at least 150 for broad topics) to cover the world map. Here are the valid country codes: {json.dumps(list(COUNTRY_CODES.values()))}
-"""
+    q = req.query
+    print("\n--- 1. NEW REQUEST RECEIVED ---")
+
+    # The preliminary check for the key is already done on startup,
+    # which is the best practice. The server wouldn't be running if it was missing.
+
+    print(f"--- 2. Query received: '{q}' ---")
+
+    # Define the system prompt for the AI
+    SYSTEM_PROMPT = f"""You are a world-class data scientist AI building a dataset for a global choropleth map. Your PRIMARY GOAL is to generate a comprehensive global dataset, NOT just a "top 10" list. The user's query is: "{q}". You must provide a response ONLY in a valid JSON object format with two keys: "label" and "data". "label" should be a short descriptive title. "data" should be a JSON list of objects, one for each country. For each country object, include "country_code" (the EXACT 3-letter ISO code) and "value" (your numeric estimate). Your response MUST include a large number of countries (at least 150 for broad topics) to cover the world map. Here are the valid country codes: {json.dumps(list(COUNTRY_CODES_SET))}"""
+
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            response_format={"type": "json_object"},
+        print("--- 3. Preparing to call OpenAI API... ---")
+        chat = client.chat.completions.create(
+            model="gpt-4o-mini", # Using the more cost-effective model
             messages=[
-                {"role": "system", "content": "You are a helpful data analysis AI that only responds with JSON for a world map."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "You are a helpful data analysis AI that only responds with a valid JSON object designed to populate a world map."},
+                {"role": "user", "content": SYSTEM_PROMPT} # Pass the full context as user content
             ],
             temperature=0.2,
+            response_format={"type": "json_object"},
         )
-        response_content = response.choices[0].message.content
-        ai_data = json.loads(response_content)
+        print("--- 4. OpenAI API call FINISHED successfully. ---")
+        response_content = chat.choices[0].message.content
+
+    except Exception as e:
+        print(f"--- CRITICAL ERROR during OpenAI API call: {type(e).__name__} - {e} ---")
+        # Check for specific OpenAI error codes like quota issues
+        if "insufficient_quota" in str(e) or (hasattr(e, 'status_code') and e.status_code == 429):
+             raise HTTPException(status_code=429, detail="OpenAI API quota exceeded. Please check your billing.")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred with the OpenAI API: {str(e)}")
+
+    print("--- 5. RAW OPENAI RESPONSE ---")
+    print(response_content)
+    print("----------------------------")
+
+    try:
+        print("--- 6. Attempting to parse and validate JSON... ---")
+        # The AI should return an object with 'label' and 'data' keys
+        ai_response_obj = json.loads(response_content)
+        
+        # We use our Pydantic model to validate the structure
+        validated_data = AIResponse(**ai_response_obj)
+
+        # Prepare the final response for the frontend (as a list of CountryData)
         final_response = [
             {
-                "country_code": item.get("country_code"),
-                "value": item.get("value"),
-                "label": ai_data.get("label", "Estimated Value")
+                "country_code": item.country_code,
+                "value": item.value,
+                "label": validated_data.label
             }
-            for item in ai_data.get("data", []) if item.get("country_code") in COUNTRY_CODES.values()
+            for item in validated_data.data if item.country_code in COUNTRY_CODES_SET
         ]
-        if not final_response: raise HTTPException(status_code=404, detail="The AI could not generate data for your query.")
+        
+        print("--- 7. JSON parsed and validated successfully! Returning data. ---")
         return final_response
+    
+    except ValidationError as e:
+        print(f"--- ERROR: Pydantic validation failed. The AI's response structure is incorrect. ---")
+        print(f"Details: {e.errors()}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "The AI response structure does not match the expected format.",
+                "validation_errors": e.errors(),
+                "raw_response": response_content
+            }
+        )
     except Exception as e:
-        print(f"[ERROR] An unexpected error occurred: {e}")
-        raise HTTPException(status_code=500, detail="An internal error occurred.")
+        print(f"--- ERROR: Failed to process response. Type: {type(e).__name__}, Details: {e} ---")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "An unexpected error occurred while processing the AI's response.",
+                "raw_response": response_content
+            }
+        )
