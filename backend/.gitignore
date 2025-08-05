@@ -1,0 +1,10 @@
+# Ignore Python virtual environment
+venv/
+__pycache__/
+
+# Ignore Node.js files that should NEVER be in the backend
+node_modules/
+package.json
+package-lock.json
+yarn.lock
+build/
