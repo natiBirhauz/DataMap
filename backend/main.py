@@ -10,17 +10,18 @@ from typing import List, Optional
 # --- Use the new, recommended way to instantiate the OpenAI client ---
 from openai import OpenAI
 
-# 1. CORRECT and ROBUST API KEY LOADING
-# This method requires your key to be in a file named .env
-# in the same folder as main.py. The file should contain one line:
-# OPENAI_API_KEY="sk-proj-YourActualKeyGoesHere"
+# 1. LOAD ENVIRONMENT and VERIFY API KEY
 load_dotenv()
-api_key = os.getenv("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") # This is the correct way to get the variable
+
+# --- THIS IS THE CORRECTED LINE ---
+# It now looks for the VARIABLE NAME, not the value.
+api_key = os.getenv("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") 
+
 if not api_key:
-    print("FATAL ERROR: OPENAI_API_KEY not found in .env file.")
+    print("FATAL ERROR: OPENAI_API_KEY variable not found.")
     # In a real app, you would want to stop the server here.
 else:
-    print("OpenAI API Key loaded successfully from .env file.")
+    print("OpenAI API Key loaded successfully from environment variable.")
 
 client = OpenAI(api_key=api_key)
 
@@ -63,28 +64,28 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"], # Allow all origins for simplicity, can be restricted later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Health check endpoint
+@app.get("/")
+def read_root():
+    return {"status": "ok"}
+
+
 @app.post("/api/query", response_model=List[CountryData])
 async def handle_query(req: QueryRequest):
-    # 2. THE NEW AND IMPROVED PROMPT
     prompt = f"""
 You are a world-class data scientist AI building a dataset for a global choropleth map.
 Your PRIMARY GOAL is to generate a comprehensive global dataset, NOT just a "top 10" list.
-
 The user's query is: "{req.query}"
-
 You must provide a response ONLY in a valid JSON object format with two keys: "label" and "data".
 1. "label": A short, descriptive title for the data (e.g., "Estimated Literacy Rate (%)").
 2. "data": A JSON list of objects, one for each country.
-
-Here is the mapping of country names to the required 3-letter codes:
-{json.dumps(list(COUNTRY_CODES.values()))}
-
+Here is the mapping of country names to the required 3-letter codes: {json.dumps(list(COUNTRY_CODES.values()))}
 CRITICAL INSTRUCTIONS:
 - Your response MUST include a large number of countries to cover the world map. For broad topics like GDP, population, or birthrate, you should provide data for AT LEAST 150 countries.
 - For each country object in the "data" list, you must include two keys:
@@ -103,14 +104,13 @@ CRITICAL INSTRUCTIONS:
                 {"role": "system", "content": "You are a helpful data analysis AI that only responds with a valid JSON object designed to populate a world map."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2, # Lower temperature for more consistent, factual data
+            temperature=0.2,
         )
         response_content = response.choices[0].message.content
         print(f"[DEBUG] GPT-4o responded with a JSON object.")
         
         ai_data = json.loads(response_content)
         
-        # This is the final data structure the frontend expects
         final_response = [
             {
                 "country_code": item.get("country_code"),
