@@ -1,4 +1,3 @@
-// src/App.js
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -17,21 +16,16 @@ const DataLayer = ({ mapData }) => {
     const geoJsonLayerRef = useRef(null);
 
     useEffect(() => {
-        if (geoJsonLayerRef.current) {
-            map.removeLayer(geoJsonLayerRef.current);
-        }
-
-        if (!mapData || mapData.length === 0) {
-            return;
-        }
+        if (geoJsonLayerRef.current) map.removeLayer(geoJsonLayerRef.current);
+        if (!mapData || mapData.length === 0) return;
 
         const dataMap = new Map(mapData.map(item => [item.country_code, item.value]));
-        const validValues = mapData.map(item => item.value || 0).filter(v => isFinite(v));
+        const validValues = mapData.map(item => item.value || 0).filter(isFinite);
         const maxValue = validValues.length > 0 ? Math.max(...validValues) : 0;
         const mapLabel = mapData[0].label;
 
         const getColor = (value) => {
-            if (value === null || value === undefined || maxValue === 0) return '#BFBFBF';
+            if (value == null || maxValue === 0) return '#BFBFBF';
             const intensity = value / maxValue;
             if (intensity > 0.8) return '#800026';
             if (intensity > 0.6) return '#BD0026';
@@ -40,19 +34,21 @@ const DataLayer = ({ mapData }) => {
             return '#FED976';
         };
 
-        const getCountryCode = (feature) => feature.properties.iso_a3;
-
         const newLayer = L.geoJSON(worldGeoJSON, {
-            style: (feature) => {
-                const code = getCountryCode(feature);
+            style: feature => {
+                const code = feature.properties.iso_a3;
                 const value = dataMap.get(code);
                 return {
                     fillColor: getColor(value),
-                    weight: 1, opacity: 1, color: '#333', dashArray: '3', fillOpacity: 0.7
+                    weight: 1,
+                    opacity: 1,
+                    color: '#333',
+                    dashArray: '3',
+                    fillOpacity: 0.7
                 };
             },
             onEachFeature: (feature, layer) => {
-                const code = getCountryCode(feature);
+                const code = feature.properties.iso_a3;
                 const value = dataMap.get(code);
                 layer.bindPopup(`<strong>${feature.properties.name}</strong><br/>${mapLabel}: ${value !== undefined ? value.toLocaleString() : 'No data'}`);
             }
@@ -60,7 +56,6 @@ const DataLayer = ({ mapData }) => {
 
         newLayer.addTo(map);
         geoJsonLayerRef.current = newLayer;
-
     }, [mapData, map]);
 
     return null;
@@ -68,24 +63,30 @@ const DataLayer = ({ mapData }) => {
 
 const Legend = ({ mapData }) => {
     if (!mapData || mapData.length === 0) return null;
-    const validValues = mapData.map(item => item.value || 0).filter(v => isFinite(v));
+
+    const validValues = mapData.map(item => item.value || 0).filter(isFinite);
     const max = validValues.length > 0 ? Math.max(...validValues) : 0;
     const label = mapData[0].label;
     if (!max) return null;
 
     const getColor = (value) => {
         const intensity = value / max;
-        if (intensity > 0.8) return '#800026'; if (intensity > 0.6) return '#BD0026'; if (intensity > 0.4) return '#E31A1C'; if (intensity > 0.2) return '#FC4E2A'; return '#FED976';
+        if (intensity > 0.8) return '#800026';
+        if (intensity > 0.6) return '#BD0026';
+        if (intensity > 0.4) return '#E31A1C';
+        if (intensity > 0.2) return '#FC4E2A';
+        return '#FED976';
     };
+
     const grades = [0, 0.2, 0.4, 0.6, 0.8].map(p => Math.round(p * max));
 
     return (
         <div className="legend">
             <h4>{label || 'Legend'}</h4>
-            {grades.map((grade, index) => (
-                <div key={index} className="legend-item">
+            {grades.map((grade, idx) => (
+                <div key={idx} className="legend-item">
                     <i style={{ background: getColor(grade + 1) }}></i>
-                    {grade.toLocaleString()} {grades[index + 1] ? `– ${grades[index + 1].toLocaleString()}` : '+'}
+                    {grade.toLocaleString()} {grades[idx + 1] ? `– ${grades[idx + 1].toLocaleString()}` : '+'}
                 </div>
             ))}
         </div>
@@ -104,8 +105,7 @@ function App() {
         const lastQuery = localStorage.getItem('lastQueryDate');
         if (lastQuery) {
             const lastDate = new Date(lastQuery);
-            const now = new Date();
-            if (lastDate.toDateString() === now.toDateString()) {
+            if (lastDate.toDateString() === new Date().toDateString()) {
                 setQueryLocked(true);
             }
         }
@@ -114,20 +114,23 @@ function App() {
     const handleSearch = async (e) => {
         e.preventDefault();
         if (!user || loading) return;
-    
         if (queryLocked) {
             setError('You can only use this feature once per day.');
             return;
         }
-    
+
         setLoading(true);
         setError('');
         setMapData([]);
-    
+
         try {
-            const response = await axios.post(`${BACKEND_URL}/api/query/`, { query, user_id: user.sub }); // <-- Added trailing slash here
-            console.log("Final data check:", JSON.stringify(response.data, null, 2));
-            setMapData(response.data);
+            const { data } = await axios.post(`${BACKEND_URL}/api/query/`, {
+                query,
+                user_id: user.sub
+            });
+
+            console.log("Final data check:", JSON.stringify(data, null, 2));
+            setMapData(data);
             localStorage.setItem('lastQueryDate', new Date().toISOString());
             setQueryLocked(true);
         } catch (err) {
@@ -138,7 +141,6 @@ function App() {
         }
     };
 
-
     return (
         <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
             <div className="app-container">
@@ -146,7 +148,12 @@ function App() {
                     <h1 className="logo">DataMap</h1>
                     {user && (
                         <form className="search-form" onSubmit={handleSearch}>
-                            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Ask a question about the world..." />
+                            <input
+                                type="text"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Ask a question about the world..."
+                            />
                             <button type="submit" disabled={loading || queryLocked}>
                                 {loading ? 'Analyzing...' : queryLocked ? 'Limit Reached' : 'Search'}
                             </button>
@@ -156,7 +163,12 @@ function App() {
                         {user ? (
                             <div className="welcome-message">Welcome, {user.given_name}!</div>
                         ) : (
-                            <GoogleLogin onSuccess={(res) => setUser(jwtDecode(res.credential))} onError={() => console.log('Login Failed')} theme="filled_black" shape="pill" />
+                            <GoogleLogin
+                                onSuccess={(res) => setUser(jwtDecode(res.credential))}
+                                onError={() => console.log('Login Failed')}
+                                theme="filled_black"
+                                shape="pill"
+                            />
                         )}
                     </div>
                 </header>
