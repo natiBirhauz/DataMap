@@ -114,18 +114,18 @@ function App() {
     const handleSearch = async (e) => {
         e.preventDefault();
         if (!user || loading) return;
-
+    
         if (queryLocked) {
             setError('You can only use this feature once per day.');
             return;
         }
-
+    
         setLoading(true);
         setError('');
         setMapData([]);
-
+    
         try {
-            const response = await axios.post(`${BACKEND_URL}/api/query`, { query, user_id: user.sub });
+            const response = await axios.post(`${BACKEND_URL}/api/query/`, { query, user_id: user.sub }); // <-- Added trailing slash here
             console.log("Final data check:", JSON.stringify(response.data, null, 2));
             setMapData(response.data);
             localStorage.setItem('lastQueryDate', new Date().toISOString());
@@ -137,6 +137,7 @@ function App() {
             setLoading(false);
         }
     };
+
 
     return (
         <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
