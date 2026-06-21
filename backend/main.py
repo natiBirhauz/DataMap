@@ -94,11 +94,18 @@ async def handle_query(req: QueryRequest):
         response_content = chat.choices[0].message.content
 
     except Exception as e:
-        print(f"--- CRITICAL ERROR during OpenAI API call: {type(e).__name__} - {e} ---")
-        # Check for specific OpenAI error codes like quota issues
-        if "insufficient_quota" in str(e) or (hasattr(e, 'status_code') and e.status_code == 429):
-             raise HTTPException(status_code=429, detail="OpenAI API quota exceeded. Please check your billing.")
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred with the OpenAI API: {str(e)}")
+        error_str = str(e)
+        print(f"--- CRITICAL ERROR during OpenAI API call: {type(e).__name__} - {error_str} ---")
+
+        status_code = getattr(e, 'status_code', None)
+
+        if status_code == 401 or "invalid_api_key" in error_str or "Incorrect API key" in error_str:
+            raise HTTPException(status_code=401, detail="Invalid API key. Please check your OpenAI API key and try again.")
+        if status_code == 429 or "insufficient_quota" in error_str or "quota" in error_str.lower():
+            raise HTTPException(status_code=429, detail="OpenAI quota exceeded. Your API key has no credits — add billing at platform.openai.com.")
+        if status_code == 403 or "permission" in error_str.lower():
+            raise HTTPException(status_code=403, detail="API key does not have permission to use this model. Check your OpenAI plan.")
+        raise HTTPException(status_code=500, detail=f"OpenAI API error: {error_str}")
 
     print("--- 5. RAW OPENAI RESPONSE ---")
     print(response_content)

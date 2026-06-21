@@ -212,8 +212,18 @@ function App() {
             localStorage.setItem('lastQueryDate', new Date().toISOString());
             setQueryLocked(true);
         } catch (err) {
-            const errorMsg = err.response?.data?.detail || "An unexpected error occurred.";
-            setError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+            const detail = err.response?.data?.detail;
+            let errorMsg;
+            if (!detail) {
+                errorMsg = "An unexpected error occurred. Check your API key and try again.";
+            } else if (typeof detail === 'string') {
+                errorMsg = detail;
+            } else if (detail.message) {
+                errorMsg = detail.message;
+            } else {
+                errorMsg = JSON.stringify(detail);
+            }
+            setError(errorMsg);
         } finally {
             setLoading(false);
         }
