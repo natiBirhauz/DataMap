@@ -10,21 +10,18 @@ from dotenv import load_dotenv
 
 # --- Setup and Initialization ---
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
+SERVER_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Critical check on application startup
-if not api_key:
-    # This will crash the server on startup if the key is missing, which is what we want.
-    raise SystemExit("🚨 FATAL ERROR: OPENAI_API_KEY environment variable not found. The application cannot start.")
+if SERVER_API_KEY:
+    print("✅ Server-level OpenAI API key loaded (used as fallback).")
 else:
-    print("✅ OpenAI API key loaded successfully.")
-
-client = OpenAI(api_key=api_key)
+    print("⚠️  No server-level OPENAI_API_KEY found. Users must supply their own key.")
 
 
 # --- Pydantic Models ---
 class QueryRequest(BaseModel):
     query: str
+    api_key: Optional[str] = None  # User-supplied OpenAI key (takes priority over server key)
 
 class CountryData(BaseModel):
     country_code: str
@@ -65,8 +62,17 @@ async def handle_query(req: QueryRequest):
     q = req.query
     print("\n--- 1. NEW REQUEST RECEIVED ---")
 
-    # The preliminary check for the key is already done on startup,
-    # which is the best practice. The server wouldn't be running if it was missing.
+    # Resolve which API key to use: user-supplied takes priority over server key
+    resolved_key = (req.api_key or "").strip() or SERVER_API_KEY
+    if not resolved_key:
+        raise HTTPException(
+            status_code=400,
+            detail="No OpenAI API key provided. Please add your API key in the settings."
+        )
+
+    client = OpenAI(api_key=resolved_key)
+    key_source = "user-supplied" if (req.api_key or "").strip() else "server"
+    print(f"--- Using {key_source} OpenAI API key ---")
 
     print(f"--- 2. Query received: '{q}' ---")
 

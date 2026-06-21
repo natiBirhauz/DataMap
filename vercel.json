@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "datamap-frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/datamap-frontend/build/static/$1"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/datamap-frontend/build/manifest.json"
+    },
+    {
+      "src": "/favicon.ico",
+      "dest": "/datamap-frontend/build/favicon.ico"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/datamap-frontend/build/index.html"
+    }
+  ]
+}

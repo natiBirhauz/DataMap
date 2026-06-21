@@ -1,3 +1,4 @@
+// src/App.js
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -10,7 +11,9 @@ import worldGeoJSON from './world.geo.json';
 
 const GOOGLE_CLIENT_ID = "569893946999-hlv7lda6iquvtn13b3icnf9ldu5o3ici.apps.googleusercontent.com";
 const BACKEND_URL = "https://datamap-production.up.railway.app";
+const API_KEY_STORAGE = 'datamap_openai_key';
 
+// --- Map Data Layer ---
 const DataLayer = ({ mapData }) => {
     const map = useMap();
     const geoJsonLayerRef = useRef(null);
@@ -61,6 +64,7 @@ const DataLayer = ({ mapData }) => {
     return null;
 };
 
+// --- Legend ---
 const Legend = ({ mapData }) => {
     if (!mapData || mapData.length === 0) return null;
 
@@ -93,6 +97,67 @@ const Legend = ({ mapData }) => {
     );
 };
 
+// --- API Key Modal ---
+const ApiKeyModal = ({ onClose }) => {
+    const [inputKey, setInputKey] = useState(localStorage.getItem(API_KEY_STORAGE) || '');
+    const [saved, setSaved] = useState(false);
+
+    const handleSave = () => {
+        const trimmed = inputKey.trim();
+        if (trimmed) {
+            localStorage.setItem(API_KEY_STORAGE, trimmed);
+        } else {
+            localStorage.removeItem(API_KEY_STORAGE);
+        }
+        setSaved(true);
+        setTimeout(() => {
+            setSaved(false);
+            onClose();
+        }, 800);
+    };
+
+    const handleClear = () => {
+        setInputKey('');
+        localStorage.removeItem(API_KEY_STORAGE);
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-box" onClick={e => e.stopPropagation()}>
+                <h2>Your OpenAI API Key</h2>
+                <p>
+                    Your key is stored only in your browser and sent directly to the server for each request.
+                    It is never logged or persisted on our end.
+                </p>
+                <input
+                    type="password"
+                    className="modal-input"
+                    placeholder="sk-..."
+                    value={inputKey}
+                    onChange={e => setInputKey(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSave()}
+                    autoFocus
+                />
+                <div className="modal-actions">
+                    <button className="modal-btn-secondary" onClick={handleClear}>Clear</button>
+                    <button className="modal-btn-primary" onClick={handleSave}>
+                        {saved ? '✓ Saved!' : 'Save Key'}
+                    </button>
+                </div>
+                <a
+                    href="https://platform.openai.com/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="modal-link"
+                >
+                    Get an API key from OpenAI →
+                </a>
+            </div>
+        </div>
+    );
+};
+
+// --- Main App ---
 function App() {
     const [user, setUser] = useState(null);
     const [query, setQuery] = useState('');
@@ -100,6 +165,8 @@ function App() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [queryLocked, setQueryLocked] = useState(false);
+    const [showKeyModal, setShowKeyModal] = useState(false);
+    const [hasApiKey, setHasApiKey] = useState(!!localStorage.getItem(API_KEY_STORAGE));
 
     useEffect(() => {
         const lastQuery = localStorage.getItem('lastQueryDate');
@@ -111,11 +178,23 @@ function App() {
         }
     }, []);
 
+    const handleModalClose = () => {
+        setShowKeyModal(false);
+        setHasApiKey(!!localStorage.getItem(API_KEY_STORAGE));
+    };
+
     const handleSearch = async (e) => {
         e.preventDefault();
         if (!user || loading) return;
         if (queryLocked) {
             setError('You can only use this feature once per day.');
+            return;
+        }
+
+        const apiKey = localStorage.getItem(API_KEY_STORAGE);
+        if (!apiKey) {
+            setError('Please add your OpenAI API key first using the key icon.');
+            setShowKeyModal(true);
             return;
         }
 
@@ -126,16 +205,15 @@ function App() {
         try {
             const { data } = await axios.post(`${BACKEND_URL}/api/query/`, {
                 query,
-                user_id: user.sub
+                user_id: user.sub,
+                api_key: apiKey,
             });
-
-            console.log("Final data check:", JSON.stringify(data, null, 2));
             setMapData(data);
             localStorage.setItem('lastQueryDate', new Date().toISOString());
             setQueryLocked(true);
         } catch (err) {
             const errorMsg = err.response?.data?.detail || "An unexpected error occurred.";
-            setError(errorMsg);
+            setError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
         } finally {
             setLoading(false);
         }
@@ -146,6 +224,7 @@ function App() {
             <div className="app-container">
                 <header className="app-header">
                     <h1 className="logo">DataMap</h1>
+
                     {user && (
                         <form className="search-form" onSubmit={handleSearch}>
                             <input
@@ -159,9 +238,21 @@ function App() {
                             </button>
                         </form>
                     )}
+
                     <div className="login-area">
                         {user ? (
-                            <div className="welcome-message">Welcome, {user.given_name}!</div>
+                            <div className="user-controls">
+                                <button
+                                    className={`key-btn ${hasApiKey ? 'key-btn--active' : 'key-btn--missing'}`}
+                                    onClick={() => setShowKeyModal(true)}
+                                    title={hasApiKey ? 'API key saved — click to update' : 'No API key — click to add'}
+                                    aria-label="Manage OpenAI API key"
+                                >
+                                    <span className="key-icon">🔑</span>
+                                    {hasApiKey ? 'Key saved' : 'Add API key'}
+                                </button>
+                                <div className="welcome-message">Welcome, {user.given_name}!</div>
+                            </div>
                         ) : (
                             <GoogleLogin
                                 onSuccess={(res) => setUser(jwtDecode(res.credential))}
@@ -184,6 +275,8 @@ function App() {
                         <Legend mapData={mapData} />
                     </MapContainer>
                 </main>
+
+                {showKeyModal && <ApiKeyModal onClose={handleModalClose} />}
             </div>
         </GoogleOAuthProvider>
     );
