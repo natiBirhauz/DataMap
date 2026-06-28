@@ -52,6 +52,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.options("/api/query/")
+async def options_query():
+    return {"status": "ok"}
+
 @app.get("/")
 def read_root():
     return {"status": "ok", "version": app.version}
