@@ -212,10 +212,14 @@ function App() {
             localStorage.setItem('lastQueryDate', new Date().toISOString());
             setQueryLocked(true);
         } catch (err) {
+            console.error("Full error object:", err);
+            console.error("Response data:", err.response?.data);
+            console.error("Response status:", err.response?.status);
+            
             const detail = err.response?.data?.detail;
             let errorMsg;
             if (!detail) {
-                errorMsg = "An unexpected error occurred. Check your API key and try again.";
+                errorMsg = "Unable to connect to server or no error details returned. Check the browser console for details.";
             } else if (typeof detail === 'string') {
                 errorMsg = detail;
             } else if (detail.message) {
