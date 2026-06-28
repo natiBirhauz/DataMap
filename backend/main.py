@@ -1,7 +1,7 @@
 # main.py
 import os
 import json
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 from typing import List, Optional
@@ -52,8 +52,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Explicit CORS headers for preflight
 @app.options("/api/query/")
-async def options_query():
+async def options_query(response: Response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
     return {"status": "ok"}
 
 @app.get("/")
