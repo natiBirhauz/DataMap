@@ -169,33 +169,42 @@ function App() {
     const [hasApiKey, setHasApiKey] = useState(!!localStorage.getItem(API_KEY_STORAGE));
 
     useEffect(() => {
-        const lastQuery = localStorage.getItem('lastQueryDate');
-        if (lastQuery) {
-            const lastDate = new Date(lastQuery);
-            if (lastDate.toDateString() === new Date().toDateString()) {
-                setQueryLocked(true);
+        const apiKey = localStorage.getItem(API_KEY_STORAGE);
+        // Only lock if no API key AND used free trial today
+        if (!apiKey) {
+            const lastQuery = localStorage.getItem('lastQueryDate');
+            if (lastQuery) {
+                const lastDate = new Date(lastQuery);
+                if (lastDate.toDateString() === new Date().toDateString()) {
+                    setQueryLocked(true);
+                }
             }
         }
-    }, []);
+    }, [hasApiKey]);
 
     const handleModalClose = () => {
         setShowKeyModal(false);
-        setHasApiKey(!!localStorage.getItem(API_KEY_STORAGE));
+        const newHasKey = !!localStorage.getItem(API_KEY_STORAGE);
+        setHasApiKey(newHasKey);
+        // Unlock if user just added their key
+        if (newHasKey) {
+            setQueryLocked(false);
+        }
     };
 
     const handleSearch = async (e) => {
         e.preventDefault();
         if (!user || loading) return;
-        if (queryLocked) {
-            setError('You can only use this feature once per day.');
-            return;
-        }
 
         const apiKey = localStorage.getItem(API_KEY_STORAGE);
+        
+        // If no API key, check free trial limit
         if (!apiKey) {
-            setError('Please add your OpenAI API key first using the key icon.');
-            setShowKeyModal(true);
-            return;
+            if (queryLocked) {
+                setError('Free trial used today. Add your own OpenAI API key for unlimited searches.');
+                setShowKeyModal(true);
+                return;
+            }
         }
 
         setLoading(true);
@@ -206,11 +215,15 @@ function App() {
             const { data } = await axios.post(`${BACKEND_URL}/api/query/`, {
                 query,
                 user_id: user.sub,
-                api_key: apiKey,
+                api_key: apiKey, // null if no key (server will use its own)
             });
             setMapData(data);
-            localStorage.setItem('lastQueryDate', new Date().toISOString());
-            setQueryLocked(true);
+            
+            // Only lock free trial if user didn't use their own key
+            if (!apiKey) {
+                localStorage.setItem('lastQueryDate', new Date().toISOString());
+                setQueryLocked(true);
+            }
         } catch (err) {
             console.error("Full error object:", err);
             console.error("Response data:", err.response?.data);
