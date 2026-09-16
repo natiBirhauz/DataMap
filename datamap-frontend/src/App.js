@@ -19,11 +19,8 @@ const SAMPLE_TOPICS = [
     { label: 'Cats', query: 'number of cats' },
     { label: 'Coffee', query: 'coffee consumption' },
     { label: 'Happiness', query: 'happiness index' },
-    { label: 'Oil Production', query: 'oil production' },
     { label: 'Renewable Energy', query: 'renewable energy' },
-    { label: 'GDP Per Capita', query: 'gdp per capita' },
-    { label: 'Electric Cars', query: 'electric vehicles' },
-    { label: 'Forest Area', query: 'forest area' }
+    { label: 'GDP Per Capita', query: 'gdp per capita' }
 ];
 
 // --- Map Data Layer ---
