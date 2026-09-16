@@ -10,8 +10,7 @@ import './App.css';
 import worldGeoJSON from './world.geo.json';
 
 const GOOGLE_CLIENT_ID = "569893946999-hlv7lda6iquvtn13b3icnf9ldu5o3ici.apps.googleusercontent.com";
-const BACKEND_URL = "https://datamap-6vmr.onrender.com";
-const API_KEY_STORAGE = 'datamap_openai_key';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://datamap-6vmr.onrender.com";
 
 // --- Map Data Layer ---
 const DataLayer = ({ mapData }) => {
@@ -25,7 +24,7 @@ const DataLayer = ({ mapData }) => {
         const dataMap = new Map(mapData.map(item => [item.country_code, item.value]));
         const validValues = mapData.map(item => item.value || 0).filter(isFinite);
         const maxValue = validValues.length > 0 ? Math.max(...validValues) : 0;
-        const mapLabel = mapData[0].label;
+        const mapLabel = mapData[0]?.label || 'Value';
 
         const getColor = (value) => {
             if (value == null || maxValue === 0) return '#BFBFBF';
@@ -70,7 +69,7 @@ const Legend = ({ mapData }) => {
 
     const validValues = mapData.map(item => item.value || 0).filter(isFinite);
     const max = validValues.length > 0 ? Math.max(...validValues) : 0;
-    const label = mapData[0].label;
+    const label = mapData[0]?.label || 'Legend';
     if (!max) return null;
 
     const getColor = (value) => {
@@ -86,73 +85,13 @@ const Legend = ({ mapData }) => {
 
     return (
         <div className="legend">
-            <h4>{label || 'Legend'}</h4>
+            <h4>{label}</h4>
             {grades.map((grade, idx) => (
                 <div key={idx} className="legend-item">
                     <i style={{ background: getColor(grade + 1) }}></i>
                     {grade.toLocaleString()} {grades[idx + 1] ? `– ${grades[idx + 1].toLocaleString()}` : '+'}
                 </div>
             ))}
-        </div>
-    );
-};
-
-// --- API Key Modal ---
-const ApiKeyModal = ({ onClose }) => {
-    const [inputKey, setInputKey] = useState(localStorage.getItem(API_KEY_STORAGE) || '');
-    const [saved, setSaved] = useState(false);
-
-    const handleSave = () => {
-        const trimmed = inputKey.trim();
-        if (trimmed) {
-            localStorage.setItem(API_KEY_STORAGE, trimmed);
-        } else {
-            localStorage.removeItem(API_KEY_STORAGE);
-        }
-        setSaved(true);
-        setTimeout(() => {
-            setSaved(false);
-            onClose();
-        }, 800);
-    };
-
-    const handleClear = () => {
-        setInputKey('');
-        localStorage.removeItem(API_KEY_STORAGE);
-    };
-
-    return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-box" onClick={e => e.stopPropagation()}>
-                <h2>Your OpenAI API Key</h2>
-                <p>
-                    Your key is stored only in your browser and sent directly to the server for each request.
-                    It is never logged or persisted on our end.
-                </p>
-                <input
-                    type="password"
-                    className="modal-input"
-                    placeholder="sk-..."
-                    value={inputKey}
-                    onChange={e => setInputKey(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSave()}
-                    autoFocus
-                />
-                <div className="modal-actions">
-                    <button className="modal-btn-secondary" onClick={handleClear}>Clear</button>
-                    <button className="modal-btn-primary" onClick={handleSave}>
-                        {saved ? '✓ Saved!' : 'Save Key'}
-                    </button>
-                </div>
-                <a
-                    href="https://platform.openai.com/api-keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="modal-link"
-                >
-                    Get an API key from OpenAI →
-                </a>
-            </div>
         </div>
     );
 };
@@ -164,48 +103,11 @@ function App() {
     const [mapData, setMapData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [queryLocked, setQueryLocked] = useState(false);
-    const [showKeyModal, setShowKeyModal] = useState(false);
-    const [hasApiKey, setHasApiKey] = useState(!!localStorage.getItem(API_KEY_STORAGE));
-
-    useEffect(() => {
-        const apiKey = localStorage.getItem(API_KEY_STORAGE);
-        // Only lock if no API key AND used free trial today
-        if (!apiKey) {
-            const lastQuery = localStorage.getItem('lastQueryDate');
-            if (lastQuery) {
-                const lastDate = new Date(lastQuery);
-                if (lastDate.toDateString() === new Date().toDateString()) {
-                    setQueryLocked(true);
-                }
-            }
-        }
-    }, [hasApiKey]);
-
-    const handleModalClose = () => {
-        setShowKeyModal(false);
-        const newHasKey = !!localStorage.getItem(API_KEY_STORAGE);
-        setHasApiKey(newHasKey);
-        // Unlock if user just added their key
-        if (newHasKey) {
-            setQueryLocked(false);
-        }
-    };
 
     const handleSearch = async (e) => {
         e.preventDefault();
-        if (!user || loading) return;
-
-        const apiKey = localStorage.getItem(API_KEY_STORAGE);
-        
-        // If no API key, check free trial limit
-        if (!apiKey) {
-            if (queryLocked) {
-                setError('Free trial used today. Add your own OpenAI API key for unlimited searches.');
-                setShowKeyModal(true);
-                return;
-            }
-        }
+        const trimmed = query.trim();
+        if (!trimmed || loading) return;
 
         setLoading(true);
         setError('');
@@ -213,26 +115,19 @@ function App() {
 
         try {
             const { data } = await axios.post(`${BACKEND_URL}/api/query/`, {
-                query,
-                user_id: user.sub,
-                api_key: apiKey, // null if no key (server will use its own)
+                query: trimmed,
+                user_id: user?.sub || null,
             });
             setMapData(data);
-            
-            // Only lock free trial if user didn't use their own key
-            if (!apiKey) {
-                localStorage.setItem('lastQueryDate', new Date().toISOString());
-                setQueryLocked(true);
-            }
         } catch (err) {
             console.error("Full error object:", err);
             console.error("Response data:", err.response?.data);
             console.error("Response status:", err.response?.status);
-            
+
             const detail = err.response?.data?.detail;
             let errorMsg;
             if (!detail) {
-                errorMsg = "Unable to connect to server or no error details returned. Check the browser console for details.";
+                errorMsg = "Unable to connect to server or no error details returned. Please check the network connection.";
             } else if (typeof detail === 'string') {
                 errorMsg = detail;
             } else if (detail.message) {
@@ -252,33 +147,23 @@ function App() {
                 <header className="app-header">
                     <h1 className="logo">DataMap</h1>
 
-                    {user && (
-                        <form className="search-form" onSubmit={handleSearch}>
-                            <input
-                                type="text"
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                placeholder="Ask a question about the world..."
-                            />
-                            <button type="submit" disabled={loading || queryLocked}>
-                                {loading ? 'Analyzing...' : queryLocked ? 'Limit Reached' : 'Search'}
-                            </button>
-                        </form>
-                    )}
+                    <form className="search-form" onSubmit={handleSearch}>
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Ask a question about the world (e.g. GDP, renewable energy, population)..."
+                        />
+                        <button type="submit" disabled={loading || !query.trim()}>
+                            {loading ? 'Analyzing...' : 'Search'}
+                        </button>
+                    </form>
 
                     <div className="login-area">
                         {user ? (
                             <div className="user-controls">
-                                <button
-                                    className={`key-btn ${hasApiKey ? 'key-btn--active' : 'key-btn--missing'}`}
-                                    onClick={() => setShowKeyModal(true)}
-                                    title={hasApiKey ? 'API key saved — click to update' : 'No API key — click to add'}
-                                    aria-label="Manage OpenAI API key"
-                                >
-                                    <span className="key-icon">🔑</span>
-                                    {hasApiKey ? 'Key saved' : 'Add API key'}
-                                </button>
-                                <div className="welcome-message">Welcome, {user.given_name}!</div>
+                                <span className="welcome-message">Welcome, {user.given_name || 'Explorer'}!</span>
+                                <button className="logout-btn" onClick={() => setUser(null)}>Sign out</button>
                             </div>
                         ) : (
                             <GoogleLogin
@@ -295,15 +180,13 @@ function App() {
                     {error && <div className="error-banner">{error}</div>}
                     <MapContainer center={[30, 0]} zoom={2.5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
                         <TileLayer
-                            attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>'
-                            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         />
                         <DataLayer mapData={mapData} />
                         <Legend mapData={mapData} />
                     </MapContainer>
                 </main>
-
-                {showKeyModal && <ApiKeyModal onClose={handleModalClose} />}
             </div>
         </GoogleOAuthProvider>
     );

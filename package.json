@@ -1,0 +1,10 @@
+{
+  "name": "datamap",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npm start --prefix datamap-frontend",
+    "build": "npm run build --prefix datamap-frontend",
+    "test": "npm test --prefix datamap-frontend -- --watchAll=false"
+  }
+}
