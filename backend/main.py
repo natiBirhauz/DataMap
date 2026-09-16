@@ -321,33 +321,38 @@ async def handle_query(req: QueryRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     print(f"\n--- Processing Query: '{q}' ---")
-    result, error_reason = query_free_llm(q)
 
-    if not result:
-        detail = error_reason or "AI data engine was unable to generate a dataset. Please check that GEMINI_API_KEY is configured in Render."
-        raise HTTPException(
-            status_code=502,
-            detail=detail
-        )
+    # 1. Try LLM if any API key is configured
+    if GEMINI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY:
+        try:
+            result, error_reason = query_free_llm(q)
+            if result:
+                label = result.get("label", q.capitalize())
+                items = result.get("data", [])
+                final_response = [
+                    {
+                        "country_code": item.get("country_code"),
+                        "value": item.get("value"),
+                        "label": label
+                    }
+                    for item in items
+                    if item.get("country_code") in COUNTRY_CODES_SET and item.get("value") is not None
+                ]
+                if final_response:
+                    print(f"[OK] Returning {len(final_response)} country data points from LLM.")
+                    return final_response
+            print(f"[INFO] LLM unavailable ({error_reason}). Falling back to Free World Data Engine.")
+        except Exception as e:
+            print(f"[WARN] LLM exception: {e}. Falling back to Free World Data Engine.")
 
-    label = result.get("label", q.capitalize())
-    items = result.get("data", [])
+    # 2. Free World Data Engine (Zero API Keys required, instant & authentic data)
+    from dataset_catalog import search_world_data
+    data = search_world_data(q)
+    if data:
+        print(f"[OK] Returning {len(data)} country data points from Free World Data Engine.")
+        return data
 
-    final_response = [
-        {
-            "country_code": item.get("country_code"),
-            "value": item.get("value"),
-            "label": label
-        }
-        for item in items
-        if item.get("country_code") in COUNTRY_CODES_SET and item.get("value") is not None
-    ]
-
-    if not final_response:
-        raise HTTPException(
-            status_code=502,
-            detail="No valid country data points could be parsed from the AI response. Please try rephrasing your query."
-        )
-
-    print(f"[OK] Returning {len(final_response)} real country data points for '{label}'.")
-    return final_response
+    raise HTTPException(
+        status_code=500,
+        detail="Unable to process search. Please try rephrasing your topic."
+    )

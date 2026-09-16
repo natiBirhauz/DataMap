@@ -1,15 +1,12 @@
 // src/App.js
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
-import { jwtDecode } from "jwt-decode";
 import axios from 'axios';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 import worldGeoJSON from './world.geo.json';
-
-const GOOGLE_CLIENT_ID = "569893946999-hlv7lda6iquvtn13b3icnf9ldu5o3ici.apps.googleusercontent.com";
+import { getClientWorldData } from './dataEngine';
 
 // Backend URL: custom env var, localhost for dev, or production Render backend
 const BACKEND_URL =
@@ -17,6 +14,17 @@ const BACKEND_URL =
     (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://localhost:8000'
         : 'https://datamap-6vmr.onrender.com');
+
+const SAMPLE_TOPICS = [
+    { label: '🐾 Cats', query: 'number of cats' },
+    { label: '☕ Coffee', query: 'coffee consumption' },
+    { label: '😀 Happiness', query: 'happiness index' },
+    { label: '⛽ Oil Production', query: 'oil production' },
+    { label: '⚡ Renewable', query: 'renewable energy' },
+    { label: '💰 GDP Per Capita', query: 'gdp per capita' },
+    { label: '🚗 Electric Cars', query: 'electric vehicles' },
+    { label: '🌱 Forest Area', query: 'forest area' }
+];
 
 // --- Map Data Layer ---
 const DataLayer = ({ mapData }) => {
@@ -104,95 +112,116 @@ const Legend = ({ mapData }) => {
 
 // --- Main App ---
 function App() {
-    const [user, setUser] = useState(null);
     const [query, setQuery] = useState('');
     const [mapData, setMapData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const handleSearch = async (e) => {
-        e.preventDefault();
-        const trimmed = query.trim();
+    // Load initial map on mount (Cats dataset for lively first look)
+    useEffect(() => {
+        const initial = getClientWorldData('number of cats');
+        if (initial && initial.length > 0) {
+            setMapData(initial);
+        }
+    }, []);
+
+    const performSearch = async (searchTerm) => {
+        const trimmed = searchTerm.trim();
         if (!trimmed || loading) return;
 
         setLoading(true);
         setError('');
 
         let fetchedData = null;
-        let lastErrorMessage = '';
 
+        // 1. Try backend with a fast 4s timeout
         const endpoint = `${BACKEND_URL}/api/query/`;
         try {
             console.log(`Querying backend: ${endpoint}`);
-            const { data } = await axios.post(endpoint, {
-                query: trimmed,
-                user_id: user?.sub || null,
-            });
+            const { data } = await axios.post(
+                endpoint,
+                { query: trimmed },
+                { timeout: 4000 }
+            );
             if (Array.isArray(data) && data.length > 0) {
                 fetchedData = data;
             }
         } catch (err) {
-            console.warn("Backend error:", err.response?.status, err.message);
-            lastErrorMessage = err.response?.data?.detail || err.message;
+            console.warn("Backend unavailable or timed out; using client-side world engine:", err.message);
+        }
+
+        // 2. Seamless client engine fallback (guarantees instant result, 0 downtime, 0 keys)
+        if (!fetchedData || fetchedData.length === 0) {
+            fetchedData = getClientWorldData(trimmed);
         }
 
         if (fetchedData && fetchedData.length > 0) {
             setMapData(fetchedData);
         } else {
-            setError(lastErrorMessage ? `Error: ${lastErrorMessage}` : "Unable to generate dataset for this query. Please try again.");
+            setError("Unable to generate dataset for this query. Please try another topic.");
         }
 
         setLoading(false);
     };
 
-    return (
-        <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-            <div className="app-container">
-                <header className="app-header">
-                    <h1 className="logo">DataMap</h1>
+    const handleSearch = (e) => {
+        e.preventDefault();
+        performSearch(query);
+    };
 
+    const handleChipClick = (topicQuery) => {
+        setQuery(topicQuery);
+        performSearch(topicQuery);
+    };
+
+    return (
+        <div className="app-container">
+            <header className="app-header">
+                <div className="header-brand">
+                    <h1 className="logo">DataMap</h1>
+                    <span className="tagline">100% Free World Visualizer</span>
+                </div>
+
+                <div className="search-section">
                     <form className="search-form" onSubmit={handleSearch}>
                         <input
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Ask a question about the world (e.g. GDP, renewable energy, population)..."
+                            placeholder="Ask any question about the world (e.g. cats, coffee, GDP, renewable energy)..."
                         />
                         <button type="submit" disabled={loading || !query.trim()}>
-                            {loading ? 'Analyzing...' : 'Search'}
+                            {loading ? 'Searching...' : 'Search'}
                         </button>
                     </form>
 
-                    <div className="login-area">
-                        {user ? (
-                            <div className="user-controls">
-                                <span className="welcome-message">Welcome, {user.given_name || 'Explorer'}!</span>
-                                <button className="logout-btn" onClick={() => setUser(null)}>Sign out</button>
-                            </div>
-                        ) : (
-                            <GoogleLogin
-                                onSuccess={(res) => setUser(jwtDecode(res.credential))}
-                                onError={() => console.log('Login Failed')}
-                                theme="filled_black"
-                                shape="pill"
-                            />
-                        )}
+                    <div className="topic-chips">
+                        {SAMPLE_TOPICS.map((topic, idx) => (
+                            <button
+                                key={idx}
+                                type="button"
+                                className="topic-chip"
+                                onClick={() => handleChipClick(topic.query)}
+                            >
+                                {topic.label}
+                            </button>
+                        ))}
                     </div>
-                </header>
+                </div>
+            </header>
 
-                <main className="map-area">
-                    {error && <div className="error-banner">{error}</div>}
-                    <MapContainer center={[30, 0]} zoom={2.5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
-                        <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-                        <DataLayer mapData={mapData} />
-                        <Legend mapData={mapData} />
-                    </MapContainer>
-                </main>
-            </div>
-        </GoogleOAuthProvider>
+            <main className="map-area">
+                {error && <div className="error-banner">{error}</div>}
+                <MapContainer center={[30, 0]} zoom={2.5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    <DataLayer mapData={mapData} />
+                    <Legend mapData={mapData} />
+                </MapContainer>
+            </main>
+        </div>
     );
 }
 

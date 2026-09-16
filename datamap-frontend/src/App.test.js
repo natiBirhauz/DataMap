@@ -27,14 +27,16 @@ test('renders DataMap title and search input without API key requirements', () =
   expect(titleElement).toBeInTheDocument();
 
   // Check search input placeholder
-  const searchInput = screen.getByPlaceholderText(/Ask a question about the world/i);
+  const searchInput = screen.getByPlaceholderText(/Ask any question about the world/i);
   expect(searchInput).toBeInTheDocument();
 
-  // Verify that the tile layer uses OpenStreetMap (no CARTO watermark)
+  // Verify that the tile layer uses OpenStreetMap
   const tileLayer = screen.getByTestId('tile-layer');
   expect(tileLayer.getAttribute('data-url')).toContain('openstreetmap.org');
 
-  // Verify that there is NO API key button or modal prompt anywhere in the DOM
+  // Verify that there is NO login button or API key prompt anywhere in the DOM
+  expect(screen.queryByText(/Sign in/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/GoogleLogin/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/Your OpenAI API Key/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/Add API key/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/Key saved/i)).not.toBeInTheDocument();
