@@ -11,23 +11,12 @@ import worldGeoJSON from './world.geo.json';
 
 const GOOGLE_CLIENT_ID = "569893946999-hlv7lda6iquvtn13b3icnf9ldu5o3ici.apps.googleusercontent.com";
 
-// Auto-detect backend: custom env var, localhost for dev, or same-origin for production (e.g. Vercel)
-const getBackendUrl = () => {
-    if (process.env.REACT_APP_BACKEND_URL) {
-        return process.env.REACT_APP_BACKEND_URL.replace(/\/+$/, '');
-    }
-    if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname;
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return 'http://localhost:8000';
-        }
-        // When deployed on Vercel or any domain, use same origin
-        return '';
-    }
-    return '';
-};
-
-const RENDER_FALLBACK_URL = 'https://datamap-6vmr.onrender.com';
+// Backend URL: custom env var, localhost for dev, or production Render backend
+const BACKEND_URL =
+    process.env.REACT_APP_BACKEND_URL ||
+    (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:8000'
+        : 'https://datamap-6vmr.onrender.com');
 
 // --- Map Data Layer ---
 const DataLayer = ({ mapData }) => {
@@ -132,41 +121,19 @@ function App() {
         let fetchedData = null;
         let lastErrorMessage = '';
 
-        const primaryUrl = getBackendUrl();
-        const primaryEndpoint = `${primaryUrl}/api/query/`;
-
-        // 1. Try Primary Backend (Vercel Serverless / Localhost / Custom Env)
+        const endpoint = `${BACKEND_URL}/api/query/`;
         try {
-            console.log(`Querying primary backend: ${primaryEndpoint}`);
-            const { data } = await axios.post(primaryEndpoint, {
+            console.log(`Querying backend: ${endpoint}`);
+            const { data } = await axios.post(endpoint, {
                 query: trimmed,
                 user_id: user?.sub || null,
             });
             if (Array.isArray(data) && data.length > 0) {
                 fetchedData = data;
             }
-        } catch (primaryErr) {
-            console.warn("Primary backend error:", primaryErr.response?.status, primaryErr.message);
-            lastErrorMessage = primaryErr.response?.data?.detail || primaryErr.message;
-
-            // 2. If primary failed and primary was not Render, try Render fallback
-            if (primaryUrl !== RENDER_FALLBACK_URL && typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-                try {
-                    console.log(`Retrying with Render backend at ${RENDER_FALLBACK_URL}...`);
-                    const renderRes = await axios.post(`${RENDER_FALLBACK_URL}/api/query/`, {
-                        query: trimmed,
-                        user_id: user?.sub || null,
-                    });
-                    if (Array.isArray(renderRes.data) && renderRes.data.length > 0) {
-                        fetchedData = renderRes.data;
-                    }
-                } catch (renderErr) {
-                    console.warn("Render fallback also unreachable:", renderErr.message);
-                    if (renderErr.response?.data?.detail) {
-                        lastErrorMessage = renderErr.response.data.detail;
-                    }
-                }
-            }
+        } catch (err) {
+            console.warn("Backend error:", err.response?.status, err.message);
+            lastErrorMessage = err.response?.data?.detail || err.message;
         }
 
         if (fetchedData && fetchedData.length > 0) {
