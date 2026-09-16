@@ -16,14 +16,14 @@ const BACKEND_URL =
         : 'https://datamap-6vmr.onrender.com');
 
 const SAMPLE_TOPICS = [
-    { label: '🐾 Cats', query: 'number of cats' },
-    { label: '☕ Coffee', query: 'coffee consumption' },
-    { label: '😀 Happiness', query: 'happiness index' },
-    { label: '⛽ Oil Production', query: 'oil production' },
-    { label: '⚡ Renewable', query: 'renewable energy' },
-    { label: '💰 GDP Per Capita', query: 'gdp per capita' },
-    { label: '🚗 Electric Cars', query: 'electric vehicles' },
-    { label: '🌱 Forest Area', query: 'forest area' }
+    { label: 'Cats', query: 'number of cats' },
+    { label: 'Coffee', query: 'coffee consumption' },
+    { label: 'Happiness', query: 'happiness index' },
+    { label: 'Oil Production', query: 'oil production' },
+    { label: 'Renewable Energy', query: 'renewable energy' },
+    { label: 'GDP Per Capita', query: 'gdp per capita' },
+    { label: 'Electric Cars', query: 'electric vehicles' },
+    { label: 'Forest Area', query: 'forest area' }
 ];
 
 // --- Map Data Layer ---
@@ -177,9 +177,8 @@ function App() {
     return (
         <div className="app-container">
             <header className="app-header">
-                <div className="header-brand">
+                <div className="header-left">
                     <h1 className="logo">DataMap</h1>
-                    <span className="tagline">100% Free World Visualizer</span>
                 </div>
 
                 <div className="search-section">
@@ -208,6 +207,8 @@ function App() {
                         ))}
                     </div>
                 </div>
+
+                <div className="header-right" />
             </header>
 
             <main className="map-area">
