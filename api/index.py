@@ -1,19 +1,20 @@
-# main.py
+# api/index.py for Vercel Serverless Functions
 import os
 import json
 import re
 import urllib.request
 import urllib.error
+import time
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-# --- Setup and Initialization ---
+# Try to load local .env if available
 try:
     from dotenv import load_dotenv
     load_dotenv()
-    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend", ".env"))
 except ImportError:
     pass
 
@@ -21,12 +22,6 @@ except ImportError:
 DEFAULT_GEMINI_KEY = "AIzaSyBvp6NjTLuijuotTwNqc8gAw0QNAI6tIaA"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or DEFAULT_GEMINI_KEY
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-if GEMINI_API_KEY:
-    print("[OK] Google Gemini API key loaded (Primary Free Tier).")
-if GROQ_API_KEY:
-    print("[OK] Groq API key loaded (High-speed Free Tier).")
-
 
 # --- Country Codes ---
 COUNTRY_CODES_SET = {
@@ -74,7 +69,6 @@ def call_gemini(query: str) -> Optional[str]:
     if not gemini_key:
         return None
 
-    import time
     prompt = build_system_prompt(query)
     body = {
         "contents": [
