@@ -18,14 +18,18 @@ except ImportError:
     pass
 
 # Check available Free Tier API keys
-DEFAULT_GEMINI_KEY = "AIzaSyBvp6NjTLuijuotTwNqc8gAw0QNAI6tIaA"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or DEFAULT_GEMINI_KEY
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if GEMINI_API_KEY:
     print("[OK] Google Gemini API key loaded (Primary Free Tier).")
 if GROQ_API_KEY:
     print("[OK] Groq API key loaded (High-speed Free Tier).")
+if OPENROUTER_API_KEY:
+    print("[OK] OpenRouter API key loaded (Multi-model Free Tier).")
+if not (GEMINI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY):
+    print("[WARN] No Free Tier API key configured! Please set GEMINI_API_KEY in Render Environment Variables.")
 
 
 # --- Country Codes ---
@@ -69,10 +73,10 @@ def build_system_prompt(q: str) -> str:
 
 
 # --- Tier 1: Google Gemini Free Tier ---
-def call_gemini(query: str) -> Optional[str]:
+def call_gemini(query: str) -> tuple[Optional[str], Optional[str]]:
     gemini_key = GEMINI_API_KEY
     if not gemini_key:
-        return None
+        return None, "GEMINI_API_KEY is not set"
 
     import time
     prompt = build_system_prompt(query)
@@ -92,6 +96,7 @@ def call_gemini(query: str) -> Optional[str]:
 
     # Verified working models in order of capability and availability
     models = ["gemini-2.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash"]
+    last_err = None
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
         req = urllib.request.Request(
@@ -112,24 +117,34 @@ def call_gemini(query: str) -> Optional[str]:
                             text = parts[0].get("text", "").strip()
                             if text:
                                 print(f"[OK] Google Gemini ({model}) responded successfully.")
-                                return text
-            except Exception as e:
-                print(f"[WARN] Gemini ({model}) attempt {attempt + 1} error: {e}")
-                if attempt == 0 and "503" in str(e):
+                                return text, None
+            except urllib.error.HTTPError as e:
+                try:
+                    err_json = json.loads(e.read().decode("utf-8"))
+                    last_err = err_json.get("error", {}).get("message", str(e))
+                except Exception:
+                    last_err = f"HTTP Error {e.code}: {e.reason}"
+                print(f"[WARN] Gemini ({model}) attempt {attempt + 1} error: {last_err}")
+                if attempt == 0 and e.code == 503:
                     time.sleep(1.5)
                     continue
                 break
-    return None
+            except Exception as e:
+                last_err = str(e)
+                print(f"[WARN] Gemini ({model}) attempt {attempt + 1} error: {last_err}")
+                break
+    return None, last_err
 
 
 # --- Tier 2: Groq Free Tier ---
-def call_groq(query: str) -> Optional[str]:
-    groq_key = os.getenv("GROQ_API_KEY")
+def call_groq(query: str) -> tuple[Optional[str], Optional[str]]:
+    groq_key = GROQ_API_KEY
     if not groq_key:
-        return None
+        return None, "GROQ_API_KEY is not set"
 
     prompt = build_system_prompt(query)
     models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    last_err = None
 
     for model in models:
         body = {
@@ -157,35 +172,104 @@ def call_groq(query: str) -> Optional[str]:
                 msg = payload.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
                 if msg:
                     print(f"[OK] Groq ({model}) responded successfully.")
-                    return msg
-        except Exception as e:
-            print(f"[WARN] Groq ({model}) error: {e}")
+                    return msg, None
+        except urllib.error.HTTPError as e:
+            try:
+                err_json = json.loads(e.read().decode("utf-8"))
+                last_err = err_json.get("error", {}).get("message", str(e))
+            except Exception:
+                last_err = f"HTTP Error {e.code}: {e.reason}"
+            print(f"[WARN] Groq ({model}) error: {last_err}")
             continue
-    return None
+        except Exception as e:
+            last_err = str(e)
+            print(f"[WARN] Groq ({model}) error: {last_err}")
+            continue
+    return None, last_err
+
+
+# --- Tier 3: OpenRouter Free Tier ---
+def call_openrouter(query: str) -> tuple[Optional[str], Optional[str]]:
+    or_key = OPENROUTER_API_KEY
+    if not or_key:
+        return None, "OPENROUTER_API_KEY is not set"
+
+    prompt = build_system_prompt(query)
+    models = ["google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.2-3b-instruct:free"]
+    last_err = None
+
+    for model in models:
+        body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a data analysis AI that only returns valid JSON for world choropleth maps."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2,
+            "response_format": {"type": "json_object"}
+        }
+        req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {or_key}"
+            },
+            method="POST"
+        )
+        try:
+            print(f"--- Calling OpenRouter ({model}) [Free Tier] ---")
+            with urllib.request.urlopen(req, timeout=25) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                msg = payload.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if msg:
+                    print(f"[OK] OpenRouter ({model}) responded successfully.")
+                    return msg, None
+        except urllib.error.HTTPError as e:
+            try:
+                err_json = json.loads(e.read().decode("utf-8"))
+                last_err = err_json.get("error", {}).get("message", str(e))
+            except Exception:
+                last_err = f"HTTP Error {e.code}: {e.reason}"
+            print(f"[WARN] OpenRouter ({model}) error: {last_err}")
+            continue
+        except Exception as e:
+            last_err = str(e)
+            print(f"[WARN] OpenRouter ({model}) error: {last_err}")
+            continue
+    return None, last_err
 
 
 # --- Unified Multi-Tier Dispatcher ---
-def query_free_llm(query: str) -> Optional[dict]:
-    """Dispatches query through Free Tier LLMs (Gemini -> Groq). Returns validated real data or None."""
-    # Tier 1: Google Gemini (Free Tier)
-    raw_response = call_gemini(query)
+def query_free_llm(query: str) -> tuple[Optional[dict], Optional[str]]:
+    """Dispatches query through Free Tier LLMs (Gemini -> Groq -> OpenRouter)."""
+    raw_response = None
+    last_err = None
 
-    # Tier 2: Groq (Free Tier)
-    if not raw_response:
-        raw_response = call_groq(query)
+    if GEMINI_API_KEY:
+        raw_response, last_err = call_gemini(query)
 
-    # Parse and validate response
+    if not raw_response and GROQ_API_KEY:
+        raw_response, last_err = call_groq(query)
+
+    if not raw_response and OPENROUTER_API_KEY:
+        raw_response, last_err = call_openrouter(query)
+
+    if not (GEMINI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY):
+        return None, "No LLM API key configured on Render. Please add GEMINI_API_KEY in Render Dashboard -> Environment."
+
     if raw_response:
         try:
             cleaned = re.sub(r'^```json\s*', '', raw_response.strip(), flags=re.MULTILINE)
             cleaned = re.sub(r'```$', '', cleaned.strip(), flags=re.MULTILINE)
             parsed = json.loads(cleaned)
             validated = AIResponse(**parsed)
-            return validated.model_dump()
+            return validated.model_dump(), None
         except Exception as e:
             print(f"[WARN] Failed to parse LLM JSON: {e}")
+            return None, f"Failed to parse LLM response: {e}"
 
-    return None
+    return None, last_err
 
 
 # --- FastAPI Application ---
@@ -221,7 +305,8 @@ def read_root():
         "version": app.version,
         "llm_providers": {
             "gemini_free_tier": bool(GEMINI_API_KEY),
-            "groq_free_tier": bool(GROQ_API_KEY)
+            "groq_free_tier": bool(GROQ_API_KEY),
+            "openrouter_free_tier": bool(OPENROUTER_API_KEY)
         }
     }
 
@@ -236,12 +321,13 @@ async def handle_query(req: QueryRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     print(f"\n--- Processing Query: '{q}' ---")
-    result = query_free_llm(q)
+    result, error_reason = query_free_llm(q)
 
     if not result:
+        detail = error_reason or "AI data engine was unable to generate a dataset. Please check that GEMINI_API_KEY is configured in Render."
         raise HTTPException(
             status_code=502,
-            detail="AI data engine was unable to generate a dataset for this query. Please check connectivity or try a different topic."
+            detail=detail
         )
 
     label = result.get("label", q.capitalize())
