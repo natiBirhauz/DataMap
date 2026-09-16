@@ -8,7 +8,6 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
-from dotenv import load_dotenv
 
 # --- Setup and Initialization ---
 try:
@@ -17,18 +16,15 @@ try:
 except ImportError:
     pass
 
-# Check available API keys
+# Check available Free Tier API keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if GEMINI_API_KEY:
     print("[OK] Google Gemini API key loaded (Primary Free Tier).")
 if GROQ_API_KEY:
     print("[OK] Groq API key loaded (High-speed Free Tier).")
-if OPENAI_API_KEY:
-    print("[OK] Server OpenAI API key loaded (Fallback).")
-if not (GEMINI_API_KEY or GROQ_API_KEY or OPENAI_API_KEY):
+if not (GEMINI_API_KEY or GROQ_API_KEY):
     print("[INFO] No external API keys configured. Zero-crash intelligent offline data engine will serve requests.")
 
 
@@ -103,7 +99,6 @@ COUNTRY_PROFILES: Dict[str, Dict[str, float]] = {
 class QueryRequest(BaseModel):
     query: str
     user_id: Optional[str] = None
-    api_key: Optional[str] = None  # Kept optional for backward-compatibility
 
 class CountryData(BaseModel):
     country_code: str
@@ -217,46 +212,7 @@ def call_groq(query: str) -> Optional[str]:
     return None
 
 
-# --- Tier 3: OpenAI Fallback (Server Key) ---
-def call_openai(query: str, user_key: Optional[str] = None) -> Optional[str]:
-    api_key = (user_key or "").strip() or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return None
-
-    prompt = build_system_prompt(query)
-    body = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "You are a helpful data analysis AI that only responds with a valid JSON object designed to populate a world map."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"}
-    }
-    req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        },
-        method="POST"
-    )
-    try:
-        print("--- Calling OpenAI (Server Key) ---")
-        with urllib.request.urlopen(req, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            msg = payload.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            if msg:
-                print("[OK] OpenAI responded successfully.")
-                return msg
-    except Exception as e:
-        print(f"[WARN] OpenAI error: {e}")
-        return None
-    return None
-
-
-# --- Tier 4: Zero-Crash Intelligent World Data Synthesizer ---
+# --- Tier 3: Zero-Crash Intelligent World Data Synthesizer ---
 def generate_fallback_data(query: str) -> dict:
     """Offline resilient engine: provides realistic estimates for any global query topic."""
     q = query.lower()
@@ -320,8 +276,8 @@ def generate_fallback_data(query: str) -> dict:
 
 
 # --- Unified Multi-Tier Dispatcher ---
-def query_free_llm(query: str, user_key: Optional[str] = None) -> dict:
-    """Dispatches query through Free Tier LLMs -> Groq -> OpenAI -> Offline Engine."""
+def query_free_llm(query: str) -> dict:
+    """Dispatches query through Free Tier LLMs (Gemini -> Groq) -> Zero-Crash Offline Engine."""
     raw_response = None
 
     # Tier 1: Google Gemini (Free Tier)
@@ -330,10 +286,6 @@ def query_free_llm(query: str, user_key: Optional[str] = None) -> dict:
     # Tier 2: Groq (Free Tier)
     if not raw_response:
         raw_response = call_groq(query)
-
-    # Tier 3: OpenAI (Server Key or optional user key)
-    if not raw_response:
-        raw_response = call_openai(query, user_key)
 
     # If any LLM returned response, parse and validate
     if raw_response:
@@ -347,7 +299,7 @@ def query_free_llm(query: str, user_key: Optional[str] = None) -> dict:
         except Exception as e:
             print(f"[WARN] Failed to parse LLM JSON: {e}. Falling back to resilient dataset engine.")
 
-    # Tier 4: Zero-Crash Resilient Engine
+    # Tier 3: Zero-Crash Resilient Engine
     return generate_fallback_data(query)
 
 
@@ -381,7 +333,6 @@ def read_root():
         "llm_providers": {
             "gemini_free_tier": bool(GEMINI_API_KEY),
             "groq_free_tier": bool(GROQ_API_KEY),
-            "openai_fallback": bool(OPENAI_API_KEY),
             "offline_engine": True
         }
     }
@@ -393,7 +344,7 @@ async def handle_query(req: QueryRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     print(f"\n--- Processing Query: '{q}' ---")
-    result = query_free_llm(q, req.api_key)
+    result = query_free_llm(q)
 
     label = result.get("label", q.capitalize())
     items = result.get("data", [])
